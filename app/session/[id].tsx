@@ -94,13 +94,23 @@ export default function SessionDetailScreen() {
   const config = getDisciplineConfig(session.discipline);
   const accent = colors[config.colorKey];
 
+  function handleEdit() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const route = session!.discipline === 'bjj'
+      ? '/log-bjj'
+      : session!.discipline === 'guitar'
+      ? '/log-guitar'
+      : '/log-workout';
+    router.push({ pathname: route as any, params: { sessionId: session!.id } });
+  }
+
   function handleDelete() {
     Alert.alert('Delete session', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive', onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          await deleteSession(session.id);
+          await deleteSession(session!.id);
           router.back();
         }
       },
@@ -119,9 +129,14 @@ export default function SessionDetailScreen() {
           </View>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>{config.label}</Text>
         </View>
-        <Pressable onPress={handleDelete}>
-          <Ionicons name="trash-outline" size={20} color={colors.destructive} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable onPress={handleEdit} style={styles.actionBtn}>
+            <Ionicons name="pencil-outline" size={20} color={accent} />
+          </Pressable>
+          <Pressable onPress={handleDelete} style={styles.actionBtn}>
+            <Ionicons name="trash-outline" size={20} color={colors.destructive} />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -343,6 +358,8 @@ const styles = StyleSheet.create({
   headerMid: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontFamily: 'Inter_700Bold' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  actionBtn: { padding: 2 },
   scroll: { padding: 20, gap: 0 },
   dateText: { fontSize: 14, fontFamily: 'Inter_400Regular', marginBottom: 12 },
   badge: {
