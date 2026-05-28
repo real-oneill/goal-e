@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -59,9 +59,13 @@ export default function LogGuitarScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const accent = colors.guitar;
-  const { addSession, goals } = useJournal();
+  const { addSession, updateSession, sessions, goals } = useJournal();
+  const { sessionId } = useLocalSearchParams<{ sessionId?: string }>();
 
-  const [date] = useState(today());
+  const isEditing = !!sessionId;
+  const existing = isEditing ? sessions.find(s => s.id === sessionId) : undefined;
+
+  const [date, setDate] = useState(today());
   const [objective, setObjective] = useState('');
   const [actualWork, setActualWork] = useState('');
   const [notes, setNotes] = useState('');
@@ -74,6 +78,23 @@ export default function LogGuitarScreen() {
   const [chordsLearned, setChordsLearned] = useState<string[]>([]);
   const [chordDiagrams, setChordDiagrams] = useState<ChordDiagramData[]>([]);
   const [keyTakeaways, setKeyTakeaways] = useState('');
+
+  useEffect(() => {
+    if (existing?.guitar) {
+      setDate(existing.date);
+      setObjective(existing.objective);
+      setActualWork(existing.actualWork);
+      setNotes(existing.notes);
+      setImprovements(existing.improvements);
+      setMetDailyObjective(existing.metDailyObjective);
+      setSessionDurationMinutes(existing.guitar.sessionDurationMinutes ? String(existing.guitar.sessionDurationMinutes) : '');
+      setScalesPracticed(existing.guitar.scalesPracticed);
+      setSongsWorkedOn(existing.guitar.songsWorkedOn);
+      setChordsLearned(existing.guitar.chordsLearned);
+      setChordDiagrams(existing.guitar.chordDiagrams);
+      setKeyTakeaways(existing.guitar.keyTakeaways);
+    }
+  }, [sessionId]);
 
   const month = date.slice(0, 7);
   const monthGoal = goals.find(g => g.discipline === 'guitar' && g.month === month);
@@ -94,18 +115,14 @@ export default function LogGuitarScreen() {
       keyTakeaways,
     };
 
-    await addSession({
-      discipline: 'guitar',
-      date,
-      objective,
-      actualWork,
-      notes,
-      improvements,
-      metDailyObjective,
-      guitar,
-    });
-    router.back();
-    router.back();
+    if (isEditing && sessionId) {
+      await updateSession(sessionId, { objective, actualWork, notes, improvements, metDailyObjective, guitar });
+      router.back();
+    } else {
+      await addSession({ discipline: 'guitar', date, objective, actualWork, notes, improvements, metDailyObjective, guitar });
+      router.back();
+      router.back();
+    }
   }
 
   return (
@@ -118,7 +135,9 @@ export default function LogGuitarScreen() {
           <View style={[styles.headerIcon, { backgroundColor: accent + '20' }]}>
             <Ionicons name="musical-notes-outline" size={18} color={accent} />
           </View>
-          <Text style={[styles.title, { color: colors.foreground }]}>Guitar</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            {isEditing ? 'Edit Session' : 'Guitar'}
+          </Text>
         </View>
         <Pressable onPress={save} style={[styles.saveBtn, { backgroundColor: accent }]}>
           <Text style={[styles.saveBtnText, { color: '#fff' }]}>Save</Text>
