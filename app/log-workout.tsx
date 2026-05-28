@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -58,27 +58,49 @@ export default function LogWorkoutScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const accent = colors.workout;
-  const { addSession, goals } = useJournal();
+  const { addSession, updateSession, sessions, goals } = useJournal();
+  const { sessionId } = useLocalSearchParams<{ sessionId?: string }>();
 
-  const [date] = useState(today());
+  const isEditing = !!sessionId;
+  const existing = isEditing ? sessions.find(s => s.id === sessionId) : undefined;
+
+  const [date, setDate] = useState(today());
   const [objective, setObjective] = useState('');
   const [actualWork, setActualWork] = useState('');
   const [notes, setNotes] = useState('');
   const [improvements, setImprovements] = useState('');
   const [metDailyObjective, setMetDailyObjective] = useState(false);
 
-  // Readiness
   const [energyLevel, setEnergyLevel] = useState(3);
   const [motivationLevel, setMotivationLevel] = useState(3);
   const [sleepQuality, setSleepQuality] = useState(3);
   const [dietQuality, setDietQuality] = useState(3);
   const [physicalCondition, setPhysicalCondition] = useState(3);
 
-  // Workout
   const [completedAllWorkouts, setCompletedAllWorkouts] = useState(false);
   const [sessionDuration, setSessionDuration] = useState('');
   const [exercises, setExercises] = useState<WorkoutExercise[]>([]);
   const [keyTakeaways, setKeyTakeaways] = useState('');
+
+  useEffect(() => {
+    if (existing?.workout) {
+      setDate(existing.date);
+      setObjective(existing.objective);
+      setActualWork(existing.actualWork);
+      setNotes(existing.notes);
+      setImprovements(existing.improvements);
+      setMetDailyObjective(existing.metDailyObjective);
+      setEnergyLevel(existing.workout.energyLevel);
+      setMotivationLevel(existing.workout.motivationLevel);
+      setSleepQuality(existing.workout.sleepQuality ?? 3);
+      setDietQuality(existing.workout.dietQuality ?? 3);
+      setPhysicalCondition(existing.workout.physicalCondition);
+      setCompletedAllWorkouts(existing.workout.completedAllWorkouts);
+      setSessionDuration(existing.workout.sessionDurationMinutes ? String(existing.workout.sessionDurationMinutes) : '');
+      setExercises(existing.workout.exercises);
+      setKeyTakeaways(existing.workout.keyTakeaways);
+    }
+  }, [sessionId]);
 
   const month = date.slice(0, 7);
   const monthGoal = goals.find(g => g.discipline === 'workout' && g.month === month);
@@ -98,9 +120,14 @@ export default function LogWorkoutScreen() {
       keyTakeaways,
     };
 
-    await addSession({ discipline: 'workout', date, objective, actualWork, notes, improvements, metDailyObjective, workout });
-    router.back();
-    router.back();
+    if (isEditing && sessionId) {
+      await updateSession(sessionId, { objective, actualWork, notes, improvements, metDailyObjective, workout });
+      router.back();
+    } else {
+      await addSession({ discipline: 'workout', date, objective, actualWork, notes, improvements, metDailyObjective, workout });
+      router.back();
+      router.back();
+    }
   }
 
   return (
@@ -113,7 +140,9 @@ export default function LogWorkoutScreen() {
           <View style={[styles.headerIcon, { backgroundColor: accent + '20' }]}>
             <Ionicons name="barbell-outline" size={18} color={accent} />
           </View>
-          <Text style={[styles.title, { color: colors.foreground }]}>Workout</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            {isEditing ? 'Edit Session' : 'Workout'}
+          </Text>
         </View>
         <Pressable onPress={save} style={[styles.saveBtn, { backgroundColor: accent }]}>
           <Text style={[styles.saveBtnText, { color: '#fff' }]}>Save</Text>
