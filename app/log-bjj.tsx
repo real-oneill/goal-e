@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -108,16 +108,19 @@ export default function LogBJJScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const accent = colors.bjj;
-  const { addSession, goals } = useJournal();
+  const { addSession, updateSession, sessions, goals } = useJournal();
+  const { sessionId } = useLocalSearchParams<{ sessionId?: string }>();
 
-  const [date] = useState(today());
+  const isEditing = !!sessionId;
+  const existing = isEditing ? sessions.find(s => s.id === sessionId) : undefined;
+
+  const [date, setDate] = useState(today());
   const [objective, setObjective] = useState('');
   const [actualWork, setActualWork] = useState('');
   const [notes, setNotes] = useState('');
   const [improvements, setImprovements] = useState('');
   const [metDailyObjective, setMetDailyObjective] = useState(false);
 
-  // Readiness
   const [energyLevel, setEnergyLevel] = useState(3);
   const [motivationLevel, setMotivationLevel] = useState(3);
   const [sleepQuality, setSleepQuality] = useState(3);
@@ -126,7 +129,6 @@ export default function LogBJJScreen() {
 
   const [sessionDurationMinutes, setSessionDurationMinutes] = useState('');
 
-  // Training
   const [techniques, setTechniques] = useState<string[]>([]);
   const [sparringRounds, setSparringRounds] = useState('');
   const [sparringMinutes, setSparringMinutes] = useState('');
@@ -134,6 +136,30 @@ export default function LogBJJScreen() {
   const [drillingMinutes, setDrillingMinutes] = useState('');
   const [metMonthlyObjective, setMetMonthlyObjective] = useState(false);
   const [keyTakeaways, setKeyTakeaways] = useState('');
+
+  useEffect(() => {
+    if (existing?.bjj) {
+      setDate(existing.date);
+      setObjective(existing.objective);
+      setActualWork(existing.actualWork);
+      setNotes(existing.notes);
+      setImprovements(existing.improvements);
+      setMetDailyObjective(existing.metDailyObjective);
+      setEnergyLevel(existing.bjj.energyLevel);
+      setMotivationLevel(existing.bjj.motivationLevel);
+      setSleepQuality(existing.bjj.sleepQuality);
+      setDietQuality(existing.bjj.dietQuality);
+      setPhysicalCondition(existing.bjj.physicalCondition);
+      setSessionDurationMinutes(existing.bjj.sessionDurationMinutes ? String(existing.bjj.sessionDurationMinutes) : '');
+      setTechniques(existing.bjj.techniques);
+      setSparringRounds(existing.bjj.sparringRounds ? String(existing.bjj.sparringRounds) : '');
+      setSparringMinutes(existing.bjj.sparringMinutes ? String(existing.bjj.sparringMinutes) : '');
+      setDrillingRounds(existing.bjj.drillingRounds ? String(existing.bjj.drillingRounds) : '');
+      setDrillingMinutes(existing.bjj.drillingMinutes ? String(existing.bjj.drillingMinutes) : '');
+      setMetMonthlyObjective(existing.bjj.metMonthlyObjective);
+      setKeyTakeaways(existing.bjj.keyTakeaways);
+    }
+  }, [sessionId]);
 
   const month = date.slice(0, 7);
   const monthGoal = goals.find(g => g.discipline === 'bjj' && g.month === month);
@@ -157,9 +183,14 @@ export default function LogBJJScreen() {
       keyTakeaways,
     };
 
-    await addSession({ discipline: 'bjj', date, objective, actualWork, notes, improvements, metDailyObjective, bjj });
-    router.back();
-    router.back();
+    if (isEditing && sessionId) {
+      await updateSession(sessionId, { objective, actualWork, notes, improvements, metDailyObjective, bjj });
+      router.back();
+    } else {
+      await addSession({ discipline: 'bjj', date, objective, actualWork, notes, improvements, metDailyObjective, bjj });
+      router.back();
+      router.back();
+    }
   }
 
   return (
@@ -172,7 +203,9 @@ export default function LogBJJScreen() {
           <View style={[styles.headerIcon, { backgroundColor: accent + '20' }]}>
             <DisciplineIcon discipline="bjj" size={18} color={accent} />
           </View>
-          <Text style={[styles.title, { color: colors.foreground }]}>Jiu Jitsu</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            {isEditing ? 'Edit Session' : 'Jiu Jitsu'}
+          </Text>
         </View>
         <Pressable onPress={save} style={[styles.saveBtn, { backgroundColor: accent }]}>
           <Text style={[styles.saveBtnText, { color: '#fff' }]}>Save</Text>
