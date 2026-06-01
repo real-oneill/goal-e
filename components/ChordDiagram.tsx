@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
@@ -7,18 +7,19 @@ import { ChordDiagramData } from '@/types';
 
 const FRETS = 5;
 const STRINGS = 6;
+const MAX_FRET = 24;
 const STRING_LABELS = ['E', 'A', 'D', 'G', 'B', 'e'];
 
 const COMMON_CHORDS: ChordDiagramData[] = [
-  { id: 'C', name: 'C', strings: [-1, 3, 2, 0, 1, 0] },
-  { id: 'G', name: 'G', strings: [3, 2, 0, 0, 3, 3] },
-  { id: 'D', name: 'D', strings: [-1, -1, 0, 2, 3, 2] },
-  { id: 'A', name: 'A', strings: [-1, 0, 2, 2, 2, 0] },
-  { id: 'E', name: 'E', strings: [0, 2, 2, 1, 0, 0] },
-  { id: 'Am', name: 'Am', strings: [-1, 0, 2, 2, 1, 0] },
-  { id: 'Em', name: 'Em', strings: [0, 2, 2, 0, 0, 0] },
-  { id: 'Dm', name: 'Dm', strings: [-1, -1, 0, 2, 3, 1] },
-  { id: 'F', name: 'F', strings: [1, 1, 2, 3, 3, 1] },
+  { id: 'C',  name: 'C',  strings: [-1, 3, 2, 0, 1, 0],  startFret: 1 },
+  { id: 'G',  name: 'G',  strings: [3, 2, 0, 0, 3, 3],   startFret: 1 },
+  { id: 'D',  name: 'D',  strings: [-1, -1, 0, 2, 3, 2], startFret: 1 },
+  { id: 'A',  name: 'A',  strings: [-1, 0, 2, 2, 2, 0],  startFret: 1 },
+  { id: 'E',  name: 'E',  strings: [0, 2, 2, 1, 0, 0],   startFret: 1 },
+  { id: 'Am', name: 'Am', strings: [-1, 0, 2, 2, 1, 0],  startFret: 1 },
+  { id: 'Em', name: 'Em', strings: [0, 2, 2, 0, 0, 0],   startFret: 1 },
+  { id: 'Dm', name: 'Dm', strings: [-1, -1, 0, 2, 3, 1], startFret: 1 },
+  { id: 'F',  name: 'F',  strings: [1, 1, 2, 3, 3, 1],   startFret: 1 },
 ];
 
 interface ChordDiagramProps {
@@ -39,16 +40,26 @@ function genId() {
 function SingleDiagram({ chord, onRemove, onUpdate }: SingleDiagramProps) {
   const colors = useColors();
   const accentColor = colors.guitar;
+  const startFret = chord.startFret ?? 1;
+  const endFret = startFret + FRETS - 1;
+
+  function shiftNeck(delta: number) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const next = Math.max(1, Math.min(MAX_FRET - FRETS + 1, startFret + delta));
+    if (next === startFret) return;
+    // Clear any finger positions that fall outside the new window
+    const newStrings = chord.strings.map(v => {
+      if (v <= 0) return v;
+      if (v < next || v > next + FRETS - 1) return 0;
+      return v;
+    });
+    onUpdate({ ...chord, startFret: next, strings: newStrings });
+  }
 
   function toggle(strIdx: number, fret: number) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const current = chord.strings[strIdx];
     const next = [...chord.strings];
-    if (current === fret) {
-      next[strIdx] = 0;
-    } else {
-      next[strIdx] = fret;
-    }
+    next[strIdx] = next[strIdx] === fret ? 0 : fret;
     onUpdate({ ...chord, strings: next });
   }
 
@@ -67,7 +78,7 @@ function SingleDiagram({ chord, onRemove, onUpdate }: SingleDiagramProps) {
   }
 
   const CELL = 26;
-  const LEFT = 28;
+  const LEFT = 36;
 
   return (
     <View style={[styles.diagram, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -85,6 +96,7 @@ function SingleDiagram({ chord, onRemove, onUpdate }: SingleDiagramProps) {
       </View>
 
       <View style={{ marginTop: 8 }}>
+        {/* Open/mute row */}
         <View style={[styles.headerRow, { paddingLeft: LEFT }]}>
           {chord.strings.map((val, i) => (
             <Pressable key={i} onPress={() => cycleOpen(i)} style={[styles.cell, { width: CELL }]}>
@@ -95,34 +107,69 @@ function SingleDiagram({ chord, onRemove, onUpdate }: SingleDiagramProps) {
           ))}
         </View>
 
-        {Array.from({ length: FRETS }).map((_, fret) => (
-          <View key={fret} style={[styles.fretRow, { borderTopColor: fret === 0 ? colors.foreground : colors.border }]}>
-            <Text style={[styles.fretLabel, { color: colors.mutedForeground, width: LEFT - 6 }]}>{fret + 1}</Text>
-            {chord.strings.map((val, strIdx) => {
-              const active = val === fret + 1;
-              return (
-                <Pressable
-                  key={strIdx}
-                  onPress={() => toggle(strIdx, fret + 1)}
-                  style={[styles.cell, { width: CELL, height: CELL }]}
-                >
-                  {active ? (
-                    <View style={[styles.finger, { backgroundColor: accentColor }]} />
-                  ) : (
-                    <View style={[styles.stringLine, { backgroundColor: colors.border }]} />
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
+        {/* Fret rows */}
+        {Array.from({ length: FRETS }).map((_, i) => {
+          const fretNum = startFret + i;
+          return (
+            <View
+              key={fretNum}
+              style={[
+                styles.fretRow,
+                { borderTopColor: i === 0 && startFret === 1 ? colors.foreground : colors.border,
+                  borderTopWidth: i === 0 && startFret === 1 ? 3 : 1 }
+              ]}
+            >
+              <Text style={[styles.fretLabel, { color: colors.mutedForeground, width: LEFT - 6 }]}>
+                {fretNum}
+              </Text>
+              {chord.strings.map((val, strIdx) => {
+                const active = val === fretNum;
+                return (
+                  <Pressable
+                    key={strIdx}
+                    onPress={() => toggle(strIdx, fretNum)}
+                    style={[styles.cell, { width: CELL, height: CELL }]}
+                  >
+                    {active ? (
+                      <View style={[styles.finger, { backgroundColor: accentColor }]} />
+                    ) : (
+                      <View style={[styles.stringLine, { backgroundColor: colors.border }]} />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          );
+        })}
 
-        <View style={[styles.headerRow, { paddingLeft: LEFT }]}>
-          {STRING_LABELS.map((label, i) => (
-            <Text key={i} style={[styles.stringLabel, { color: colors.mutedForeground, width: CELL }]}>
-              {label}
+        {/* String labels + neck nav */}
+        <View style={[styles.bottomRow, { paddingLeft: LEFT }]}>
+          <View style={styles.stringLabels}>
+            {STRING_LABELS.map((label, i) => (
+              <Text key={i} style={[styles.stringLabel, { color: colors.mutedForeground, width: CELL }]}>
+                {label}
+              </Text>
+            ))}
+          </View>
+          <View style={styles.neckNav}>
+            <Pressable
+              onPress={() => shiftNeck(-1)}
+              disabled={startFret <= 1}
+              style={[styles.navBtn, { opacity: startFret <= 1 ? 0.3 : 1, borderColor: colors.border }]}
+            >
+              <Ionicons name="chevron-up" size={14} color={colors.foreground} />
+            </Pressable>
+            <Text style={[styles.posLabel, { color: colors.mutedForeground }]}>
+              {startFret === 1 ? 'nut' : `fr ${startFret}`}
             </Text>
-          ))}
+            <Pressable
+              onPress={() => shiftNeck(1)}
+              disabled={endFret >= MAX_FRET}
+              style={[styles.navBtn, { opacity: endFret >= MAX_FRET ? 0.3 : 1, borderColor: colors.border }]}
+            >
+              <Ionicons name="chevron-down" size={14} color={colors.foreground} />
+            </Pressable>
+          </View>
         </View>
       </View>
     </View>
@@ -134,7 +181,7 @@ export default function ChordDiagram({ chords, onChange }: ChordDiagramProps) {
   const accentColor = colors.guitar;
 
   function addBlank() {
-    onChange([...chords, { id: genId(), name: '', strings: [0, 0, 0, 0, 0, 0] }]);
+    onChange([...chords, { id: genId(), name: '', strings: [0, 0, 0, 0, 0, 0], startFret: 1 }]);
   }
 
   function addPreset(preset: ChordDiagramData) {
@@ -243,9 +290,34 @@ const styles = StyleSheet.create({
     width: 1,
     height: '100%',
   },
+  bottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  stringLabels: {
+    flexDirection: 'row',
+  },
   stringLabel: {
     fontSize: 11,
     fontFamily: 'Inter_500Medium',
+    textAlign: 'center',
+  },
+  neckNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  navBtn: {
+    borderWidth: 1,
+    borderRadius: 4,
+    padding: 2,
+  },
+  posLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+    minWidth: 32,
     textAlign: 'center',
   },
   addBtn: {
