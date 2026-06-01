@@ -15,8 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.goale.app",
-      "jsEngine": "jsc"
+      "bundleIdentifier": "com.goale.app"
     },
     "android": {
       "package": "com.goale.app"
