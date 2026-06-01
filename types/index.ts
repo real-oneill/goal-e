@@ -29,6 +29,7 @@ export interface ChordDiagramData {
   id: string;
   name: string;
   strings: number[];
+  startFret: number;
 }
 
 export interface WorkoutSet {
