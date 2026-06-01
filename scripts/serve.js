@@ -20,12 +20,24 @@ function serveFile(res, filePath) {
   const ext = path.extname(filePath);
   const mime = MIME[ext] || "application/octet-stream";
   res.writeHead(200, { "Content-Type": mime });
-  fs.createReadStream(filePath).pipe(res);
+  const stream = fs.createReadStream(filePath);
+  stream.on("error", (err) => {
+    console.error(`Stream error serving ${filePath}: ${err.message}`);
+    if (!res.writableEnded) res.destroy();
+  });
+  stream.pipe(res);
   return true;
 }
 
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
+  let url;
+  try {
+    url = new URL(req.url, `http://localhost:${PORT}`);
+  } catch {
+    res.writeHead(400);
+    res.end("Bad request");
+    return;
+  }
   const pathname = url.pathname;
 
   if (pathname === "/status") {
@@ -39,14 +51,20 @@ const server = http.createServer((req, res) => {
   if (pathname === "/manifest" || pathname === "/manifest/") {
     const manifestPath = path.join(STATIC_DIR, platform || "ios", "manifest.json");
     if (fs.existsSync(manifestPath)) {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-      res.writeHead(200, {
-        "Content-Type": "application/json",
-        "expo-protocol-version": "0",
-        "expo-sfv-version": "0",
-        "cache-control": "private, max-age=0",
-      });
-      res.end(JSON.stringify(manifest));
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "expo-protocol-version": "0",
+          "expo-sfv-version": "0",
+          "cache-control": "private, max-age=0",
+        });
+        res.end(JSON.stringify(manifest));
+      } catch (err) {
+        console.error(`Manifest read error: ${err.message}`);
+        res.writeHead(500);
+        res.end("Error reading manifest");
+      }
     } else {
       res.writeHead(404);
       res.end("Manifest not found — run the build first");
@@ -64,6 +82,14 @@ const server = http.createServer((req, res) => {
   if (!serveFile(res, candidate)) {
     res.writeHead(404);
     res.end("Not found");
+  }
+});
+
+server.on("error", (err) => {
+  console.error(`Server error: ${err.message}`);
+  if (err.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} is already in use`);
+    process.exit(1);
   }
 });
 
