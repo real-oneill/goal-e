@@ -8,6 +8,7 @@ import { useColors } from '@/hooks/useColors';
 import { useJournal } from '@/context/JournalContext';
 import RatingRow from '@/components/RatingRow';
 import ExerciseEditor from '@/components/ExerciseEditor';
+import WorkoutImageImport from '@/components/WorkoutImageImport';
 import { WorkoutDetails, WorkoutExercise } from '@/types';
 
 function today() {
@@ -81,6 +82,14 @@ export default function LogWorkoutScreen() {
   const [sessionDuration, setSessionDuration] = useState('');
   const [exercises, setExercises] = useState<WorkoutExercise[]>([]);
   const [keyTakeaways, setKeyTakeaways] = useState('');
+
+  function mergeImportedExercises(imported: WorkoutExercise[]) {
+    setExercises(prev => {
+      const existing = new Set(prev.map(e => e.name.toLowerCase().trim()));
+      const newOnes = imported.filter(e => !existing.has(e.name.toLowerCase().trim()));
+      return [...prev, ...newOnes];
+    });
+  }
 
   useEffect(() => {
     if (existing?.workout) {
@@ -225,6 +234,7 @@ export default function LogWorkoutScreen() {
             />
           </View>
 
+          <WorkoutImageImport onImport={mergeImportedExercises} />
           <ExerciseEditor exercises={exercises} onChange={setExercises} />
         </View>
 
