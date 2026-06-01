@@ -1,5 +1,5 @@
 {
-  "name": "goal-e",
+  "name": "@workspace/session-journal",
   "version": "1.0.0",
   "private": true,
   "main": "expo-router/entry",
@@ -7,6 +7,8 @@
     "start": "expo start",
     "ios": "expo run:ios",
     "android": "expo run:android",
+    "build": "node scripts/build.js",
+    "serve": "node scripts/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "postinstall": "node scripts/patch-hermes.js"
   },
