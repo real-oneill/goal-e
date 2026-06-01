@@ -4,7 +4,7 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "node scripts/serve.js",
+    "dev": "expo start --port $PORT --localhost",
     "start": "expo start",
     "ios": "expo run:ios",
     "android": "expo run:android",
