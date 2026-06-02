@@ -15,7 +15,8 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { WorkoutExercise } from '@/types';
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? '';
+const _domain = process.env.EXPO_PUBLIC_DOMAIN;
+const API_BASE = _domain ? `https://${_domain}` : '';
 
 interface Props {
   onImport: (exercises: WorkoutExercise[]) => void;
