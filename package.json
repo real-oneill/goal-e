@@ -9,7 +9,7 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "build": "node scripts/build.js",
-    "serve": "node scripts/serve.js",
+    "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
