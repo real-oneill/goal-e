@@ -17,6 +17,8 @@ const MIME = {
 
 function serveFile(res, filePath) {
   if (!fs.existsSync(filePath)) return false;
+  const stat = fs.statSync(filePath);
+  if (stat.isDirectory()) return false;
   const ext = path.extname(filePath);
   const mime = MIME[ext] || "application/octet-stream";
   res.writeHead(200, { "Content-Type": mime });
@@ -48,7 +50,17 @@ const server = http.createServer((req, res) => {
 
   const platform = req.headers["expo-platform"] || url.searchParams.get("platform");
 
-  if (pathname === "/manifest" || pathname === "/manifest/") {
+  if (pathname === "/" && !platform) {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(
+      "<!DOCTYPE html><html><head><meta charset=utf-8><title>Goal-E</title></head><body style='font-family:sans-serif;text-align:center;padding:60px'>" +
+      "<h1>Goal-E</h1><p>Open this URL in <strong>Expo Go</strong> on your iPhone to load the app.</p>" +
+      "<p><code>https://goal-e.replit.app</code></p></body></html>"
+    );
+    return;
+  }
+
+  if (pathname === "/manifest" || pathname === "/manifest/" || pathname === "/") {
     const manifestPath = path.join(STATIC_DIR, platform || "ios", "manifest.json");
     if (fs.existsSync(manifestPath)) {
       try {
