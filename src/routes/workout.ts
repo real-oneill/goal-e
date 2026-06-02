@@ -3,7 +3,7 @@ import { openai } from "@workspace/integrations-openai-ai-server";
 
 const router = Router();
 
-router.post("/api/workout/parse-images", async (req, res) => {
+router.post("/workout/parse-images", async (req, res) => {
   try {
     const { images } = req.body as { images: string[] };
 
