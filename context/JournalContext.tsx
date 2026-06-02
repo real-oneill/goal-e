@@ -1,6 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Discipline, MonthlyGoal, Session } from '@/types';
+import {
+  getOrCreateDeviceToken,
+  pullFromServer,
+  pushToServer,
+} from '@/services/syncService';
 
 const SESSIONS_KEY = '@journal_sessions';
 const GOALS_KEY = '@journal_goals';
@@ -31,39 +36,95 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [goals, setGoals] = useState<MonthlyGoal[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const deviceTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
-        const [rawSessions, rawGoals] = await Promise.all([
+        const [rawSessions, rawGoals, token] = await Promise.all([
           AsyncStorage.getItem(SESSIONS_KEY),
           AsyncStorage.getItem(GOALS_KEY),
+          getOrCreateDeviceToken(),
         ]);
-        if (rawSessions) setSessions(JSON.parse(rawSessions));
-        if (rawGoals) {
-          const parsed: MonthlyGoal[] = JSON.parse(rawGoals);
-          const migrated = parsed.map(g => ({ period: 'monthly' as const, ...g }));
-          setGoals(migrated);
+
+        deviceTokenRef.current = token;
+
+        let localSessions: Session[] = rawSessions ? JSON.parse(rawSessions) : [];
+        let localGoals: MonthlyGoal[] = rawGoals
+          ? (JSON.parse(rawGoals) as MonthlyGoal[]).map(g => ({
+              period: 'monthly' as const,
+              ...g,
+            }))
+          : [];
+
+        setSessions(localSessions);
+        setGoals(localGoals);
+        setIsLoaded(true);
+
+        // Pull from server and merge in the background
+        const remote = await pullFromServer(token);
+        if (remote) {
+          const localSessionIds = new Set(localSessions.map(s => s.id));
+          const localGoalIds = new Set(localGoals.map(g => g.id));
+
+          const newSessions = remote.sessions.filter(s => !localSessionIds.has(s.id));
+          const newGoals = remote.goals
+            .map(g => ({ period: 'monthly' as const, ...g }))
+            .filter(g => !localGoalIds.has(g.id));
+
+          if (newSessions.length > 0 || newGoals.length > 0) {
+            const mergedSessions = [...localSessions, ...newSessions];
+            const mergedGoals = [...localGoals, ...newGoals];
+
+            await Promise.all([
+              AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(mergedSessions)),
+              AsyncStorage.setItem(GOALS_KEY, JSON.stringify(mergedGoals)),
+            ]);
+
+            setSessions(mergedSessions);
+            setGoals(mergedGoals);
+            localSessions = mergedSessions;
+            localGoals = mergedGoals;
+          }
+
+          // Push merged state back so server is always up to date
+          await pushToServer(token, localSessions, localGoals);
         }
-      } catch {}
-      setIsLoaded(true);
+      } catch {
+        setIsLoaded(true);
+      }
     }
     load();
   }, []);
 
-  const persistSessions = useCallback(async (updated: Session[]) => {
-    await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updated));
+  const syncPush = useCallback((updatedSessions: Session[], updatedGoals: MonthlyGoal[]) => {
+    const token = deviceTokenRef.current;
+    if (token) {
+      pushToServer(token, updatedSessions, updatedGoals);
+    }
   }, []);
 
-  const persistGoals = useCallback(async (updated: MonthlyGoal[]) => {
+  const persistSessions = useCallback(async (updated: Session[], currentGoals: MonthlyGoal[]) => {
+    await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updated));
+    syncPush(updated, currentGoals);
+  }, [syncPush]);
+
+  const persistGoals = useCallback(async (currentSessions: Session[], updated: MonthlyGoal[]) => {
     await AsyncStorage.setItem(GOALS_KEY, JSON.stringify(updated));
-  }, []);
+    syncPush(currentSessions, updated);
+  }, [syncPush]);
+
+  // Keep stable refs to current state for use inside callbacks
+  const sessionsRef = useRef(sessions);
+  const goalsRef = useRef(goals);
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
+  useEffect(() => { goalsRef.current = goals; }, [goals]);
 
   const addSession = useCallback(async (data: Omit<Session, 'id' | 'createdAt'>) => {
     const session: Session = { ...data, id: genId(), createdAt: new Date().toISOString() };
     setSessions(prev => {
       const next = [session, ...prev];
-      persistSessions(next);
+      persistSessions(next, goalsRef.current);
       return next;
     });
     return session;
@@ -72,7 +133,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
   const updateSession = useCallback(async (id: string, updates: Partial<Session>) => {
     setSessions(prev => {
       const next = prev.map(s => s.id === id ? { ...s, ...updates } : s);
-      persistSessions(next);
+      persistSessions(next, goalsRef.current);
       return next;
     });
   }, [persistSessions]);
@@ -80,7 +141,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
   const deleteSession = useCallback(async (id: string) => {
     setSessions(prev => {
       const next = prev.filter(s => s.id !== id);
-      persistSessions(next);
+      persistSessions(next, goalsRef.current);
       return next;
     });
   }, [persistSessions]);
@@ -89,7 +150,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
     const goal: MonthlyGoal = { ...data, id: genId(), createdAt: new Date().toISOString() };
     setGoals(prev => {
       const next = [goal, ...prev];
-      persistGoals(next);
+      persistGoals(sessionsRef.current, next);
       return next;
     });
     return goal;
@@ -98,7 +159,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
   const updateGoal = useCallback(async (id: string, updates: Partial<MonthlyGoal>) => {
     setGoals(prev => {
       const next = prev.map(g => g.id === id ? { ...g, ...updates } : g);
-      persistGoals(next);
+      persistGoals(sessionsRef.current, next);
       return next;
     });
   }, [persistGoals]);
@@ -106,7 +167,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
   const deleteGoal = useCallback(async (id: string) => {
     setGoals(prev => {
       const next = prev.filter(g => g.id !== id);
-      persistGoals(next);
+      persistGoals(sessionsRef.current, next);
       return next;
     });
   }, [persistGoals]);
